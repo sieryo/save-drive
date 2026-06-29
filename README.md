@@ -40,8 +40,31 @@ Tetap didukung via `GOOGLE_APPLICATION_CREDENTIALS`, tapi untuk akun personal bi
 
 ## Build
 
+Plain `go build`:
+
 ```powershell
 go build -o save-drive.exe ./cmd/save-drive
+```
+
+### With Task (recommended)
+
+Uses [Task](https://taskfile.dev) (`winget install Task.Task`). Run `task` to list everything.
+
+```powershell
+task dev        # fast dev build  -> bin\save-drive.exe
+task release    # optimized exe   -> dist\save-drive.exe  (stripped + version-stamped)
+task clean      # remove bin\ and dist\
+
+# Pass args after `--`:
+task dev -- list --from Test          # build then run
+task release -- -Version 1.2.0        # stamp an explicit version
+```
+
+`release` strips debug info (`-s -w`), uses `-trimpath`, and stamps version/commit/date.
+The default version comes from `git describe`. Check it with:
+
+```powershell
+.\dist\save-drive.exe version
 ```
 
 ## Project Layout

@@ -1,0 +1,61 @@
+# Task runner for save-drive — https://taskfile.dev
+# Install: winget install Task.Task   (or: go install github.com/go-task/task/v3/cmd/task@latest)
+# Usage:   task            (list)
+#          task dev        (build dev binary -> bin/)
+#          task release    (build release exe -> dist/)
+#          task dev -- list --from Test          (build, then run with args)
+#          task release -- -Version 1.2.0        (override version)
+version: '3'
+
+vars:
+  PKG: ./cmd/save-drive
+  PS: powershell -NoProfile -ExecutionPolicy Bypass -File
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  dev:
+    desc: Build a dev binary to bin/ (append `-- <args>` to run it)
+    cmds:
+      - "{{.PS}} scripts/dev.ps1 {{.CLI_ARGS}}"
+
+  release:
+    desc: Build an optimized, version-stamped release exe to dist/
+    cmds:
+      - "{{.PS}} scripts/release.ps1 {{.CLI_ARGS}}"
+
+  run:
+    desc: Run straight from source (go run -- <args>)
+    cmds:
+      - "go run {{.PKG}} {{.CLI_ARGS}}"
+
+  fmt:
+    desc: Format all Go sources
+    cmds:
+      - gofmt -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    cmds:
+      - go mod tidy
+
+  check:
+    desc: fmt + vet + release build
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: release
+
+  clean:
+    desc: Remove build outputs (bin/, dist/)
+    cmds:
+      - "{{.PS}} scripts/clean.ps1"

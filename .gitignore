@@ -1,4 +1,6 @@
 *.exe
+bin/
+dist/
 logs/
 .save-drive/
 service-account*.json

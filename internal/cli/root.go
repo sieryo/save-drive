@@ -1,7 +1,11 @@
 // Package cli wires up the save-drive cobra command tree.
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+
+	"save-drive/internal/buildinfo"
+)
 
 // Execute builds the root command and runs it.
 func Execute() error {
@@ -12,6 +16,7 @@ func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "save-drive",
 		Short:         "Simple Google Drive CLI for release artifact management",
+		Version:       buildinfo.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Long: `Manage files in Google Drive from scripts.
@@ -31,6 +36,7 @@ Env vars:
 		newFetchCmd(),
 		newDeleteCmd(),
 		newLogsCmd(),
+		newVersionCmd(),
 	)
 	return cmd
 }
