@@ -41,7 +41,17 @@ Tetap didukung via `GOOGLE_APPLICATION_CREDENTIALS`, tapi untuk akun personal bi
 ## Build
 
 ```powershell
-go build -o save-drive.exe .
+go build -o save-drive.exe ./cmd/save-drive
+```
+
+## Project Layout
+
+```
+cmd/save-drive/      entrypoint (main)
+internal/cli/        cobra commands, one file per command
+internal/gdrive/     Google Drive client + OAuth flow
+internal/audit/      JSONL audit logging
+internal/config/     env vars and default file paths
 ```
 
 ## Commands
