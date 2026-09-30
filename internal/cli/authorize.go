@@ -19,26 +19,27 @@ func newAuthorizeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "authorize",
 		Short: "Run OAuth authorization and cache token locally",
-		Long:  "Starts the Google OAuth flow so the local token is created before running push/list/fetch/delete.",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return runAuthorize(opts)
+		Long: "Starts the Google OAuth flow so the local token is created before running push/list/fetch/delete.\n" +
+			"Always runs a fresh flow and overwrites the cached token, so it also fixes a revoked or expired token.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runAuthorize(cmd.Context(), opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.creds, "creds", config.DefaultCredsPath(), "Credentials JSON path (OAuth client or service account)")
 	return cmd
 }
 
-func runAuthorize(opts authorizeOptions) error {
-	ctx := context.Background()
-	client, err := gdrive.New(ctx, opts.creds)
+func runAuthorize(ctx context.Context, opts authorizeOptions) error {
+	client, err := gdrive.Authorize(ctx, opts.creds)
 	if err != nil {
 		return err
 	}
-
-	if _, err := client.Service().About.Get().Fields("user(displayName,emailAddress)").Context(ctx).Do(); err != nil {
+	user, err := client.WhoAmI(ctx)
+	if err != nil {
 		return fmt.Errorf("verify drive access: %w", err)
 	}
 
 	fmt.Printf("authorization ready; token file: %s\n", config.DefaultTokenFile())
+	fmt.Printf("account: %s\n", user.EmailAddress)
 	return nil
 }

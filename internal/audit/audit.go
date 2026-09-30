@@ -35,24 +35,28 @@ func NewLogger(path string) *Logger {
 }
 
 // Append writes e to the log file, stamping e.Time with the current UTC time
-// when it is empty. Failures are intentionally ignored so auditing never blocks
-// the primary operation.
-func (l *Logger) Append(e Event) {
+// when it is empty. Callers should report a returned error as a warning
+// rather than fail the command, so auditing never blocks the primary
+// operation.
+func (l *Logger) Append(e Event) error {
 	if l == nil {
-		return
+		return nil
 	}
 	if e.Time == "" {
 		e.Time = time.Now().UTC().Format(time.RFC3339)
 	}
 	if err := os.MkdirAll(filepath.Dir(l.Path), 0o755); err != nil {
-		return
+		return err
 	}
 	f, err := os.OpenFile(l.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return
+		return err
 	}
-	defer f.Close()
-	_ = json.NewEncoder(f).Encode(e)
+	if err := json.NewEncoder(f).Encode(e); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // ReadAll loads every parseable event from path in chronological order.

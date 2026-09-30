@@ -2,14 +2,21 @@
 package cli
 
 import (
+	"context"
+	"os"
+	"os/signal"
+
 	"github.com/spf13/cobra"
 
 	"save-drive/internal/buildinfo"
 )
 
-// Execute builds the root command and runs it.
+// Execute builds the root command and runs it. Ctrl+C cancels the context
+// passed to every command, which aborts in-flight Drive requests.
 func Execute() error {
-	return newRootCmd().Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return newRootCmd().ExecuteContext(ctx)
 }
 
 func newRootCmd() *cobra.Command {
@@ -31,10 +38,14 @@ Env vars:
 
 	cmd.AddCommand(
 		newAuthorizeCmd(),
+		newWhoamiCmd(),
+		newLogoutCmd(),
 		newPushCmd(),
 		newListCmd(),
 		newFetchCmd(),
 		newDeleteCmd(),
+		newPruneCmd(),
+		newShareCmd(),
 		newLogsCmd(),
 		newVersionCmd(),
 	)
