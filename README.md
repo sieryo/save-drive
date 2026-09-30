@@ -75,7 +75,11 @@ internal/cli/        cobra commands, one file per command
 internal/gdrive/     Google Drive client + OAuth flow
 internal/audit/      JSONL audit logging
 internal/config/     env vars and default file paths
+internal/buildinfo/  version metadata stamped via -ldflags
+scripts/             PowerShell build scripts used by Taskfile.yml
 ```
+
+Dokumen untuk kontributor ada di `AGENTS.md` dan `documents/`.
 
 ## Commands
 
