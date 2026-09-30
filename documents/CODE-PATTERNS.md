@@ -1,6 +1,6 @@
 # Pola kode
 
-Aturan menulis kode di repo ini. Setiap bagian bertanda **tetap** (pola yang sudah dipakai kode, dengan contoh untuk ditiru) atau **diadopsi** (dipilih di pass dokumentasi 2026-09-30, kode lama belum ikut). Kode baru dan kode yang disentuh mengikuti keduanya; file di daftar migrasi dipindah saat disentuh.
+Aturan menulis kode di repo ini. Setiap bagian bertanda **tetap** (pola yang sudah dipakai kode sejak awal) atau **diadopsi** (dipilih di pass dokumentasi 2026-09-30). Migrasi ke pola yang diadopsi selesai di hari yang sama; semua kode sekarang mengikuti keduanya.
 
 Project ini tidak punya frontend. Area frontend (routing, komponen, styling) tidak berlaku.
 
@@ -16,11 +16,11 @@ Satu command, satu file di `internal/cli/`. Setiap file berisi:
 
 - struct `xOptions` untuk semua flag,
 - `newXCmd() *cobra.Command` yang mendaftarkan flag ke struct itu,
-- `runX(opts xOptions) error` yang berisi logika.
+- `runX(ctx context.Context, opts xOptions) (err error)` yang berisi logika. Return value diberi nama supaya `defer a.record(&e, &err)` bisa membacanya.
 
 Daftarkan di `newRootCmd()` (`internal/cli/root.go`). Flag `--creds` dan `--root-id` memakai default dari `config`. Flag wajib memakai `cmd.MarkFlagRequired`; aturan "salah satu dari `--id` atau `--name`" divalidasi di awal `runX` dengan `errors.New`.
 
-Contoh untuk ditiru: `internal/cli/fetch.go`. Command tanpa flag boleh ditulis inline seperti `internal/cli/version.go`.
+Contoh untuk ditiru: `internal/cli/fetch.go`, dan `internal/cli/push.go` untuk command dengan `--dry-run`. Command tanpa flag boleh ditulis inline seperti `internal/cli/version.go`.
 
 ## Config dan env var (tetap)
 
@@ -34,26 +34,28 @@ Semua panggilan Drive API ada di `internal/gdrive`. Package `internal/cli` tidak
 - cli hanya membaca flag, memanggil gdrive, mencatat audit, dan mencetak output.
 - Method gdrive menerima `ctx` sebagai parameter pertama dan mengembalikan error yang di-wrap.
 
-Bentuk yang dituju, di `internal/gdrive/files.go`:
+Method utama, di `internal/gdrive/files.go`, `folders.go`, dan `client.go`:
 
 ```go
-func (c *Client) Upload(ctx context.Context, folderID, localPath string, replace bool) (*drive.File, error)
-func (c *Client) Download(ctx context.Context, fileID, dst string) error
-func (c *Client) Delete(ctx context.Context, ids ...string) error
+func (c *Client) Upload(ctx context.Context, folderID, localPath string, opts UploadOptions) (*drive.File, error)
+func (c *Client) Download(ctx context.Context, fileID, dst string) (*drive.File, string, error)
+func (c *Client) Trash(ctx context.Context, ids ...string) error
+func (c *Client) Delete(ctx context.Context, ids ...string) error // permanen
 func (c *Client) List(ctx context.Context, folderID string) ([]*drive.File, error)
+func (c *Client) ListTree(ctx context.Context, folderID string) ([]Entry, error)
+func (c *Client) FindFiles(ctx context.Context, parentID, name string) ([]*drive.File, error)
+func (c *Client) ResolveFolderPath(ctx context.Context, rootID, folderPath string, create bool) (string, error)
 func (c *Client) WhoAmI(ctx context.Context) (*drive.User, error)
 ```
 
-cli memakai field `*drive.File` hasil method tanpa perlu mengimpor `drive/v3`. `Upload` dengan `replace` meng-upload file baru dulu, baru menghapus yang lama, sehingga upload yang gagal tidak menghilangkan file lama. `List` mengikuti `NextPageToken` sampai habis.
+cli memakai field `*drive.File` hasil method tanpa perlu mengimpor `drive/v3`. Aturan yang dijaga gdrive:
 
-Migrasi:
-
-- `internal/cli/push.go`: `Files.Delete`, `Files.Create`, dan cek nama bentrok pindah ke `Upload`.
-- `internal/cli/fetch.go`: `Files.Get(...).Download()` dan penulisan file pindah ke `Download`.
-- `internal/cli/delete.go`: dua pemanggilan `Files.Delete` pindah ke `Delete`.
-- `internal/cli/list.go`: `Files.List` pindah ke `List`.
-- `internal/cli/authorize.go`: `About.Get` pindah ke `WhoAmI`.
-- `internal/gdrive/client.go`: hapus `Service()` setelah semua di atas pindah.
+- `Upload` dengan `Replace` meng-upload file baru dan mengecek MD5 dulu, baru memindah file lama ke trash. Upload yang gagal tidak menghilangkan file lama.
+- Pencarian berdasarkan nama (`FindFiles`) tidak pernah mengembalikan folder. `Files.Delete` pada folder ikut menghapus seluruh isinya.
+- Penghapusan default lewat `Trash`. `Delete` hanya dipanggil kalau user memberi `--permanent`.
+- Semua list mengikuti `NextPageToken` sampai habis (`c.list`).
+- Error dibungkus `ErrNotFound` / `ErrExists` supaya cli bisa memakai `errors.Is`.
+- Retry untuk 429/5xx/rate limit ada di transport HTTP (`retry.go`), bukan di tiap method.
 
 ## Audit (diadopsi)
 
@@ -88,7 +90,7 @@ func (a *app) record(e *audit.Event, err *error) {
 - Error validasi flag dan error saat membuat client (sebelum `defer`) tidak dicatat.
 - Nama dan tag JSON field `audit.Event` tidak diubah. Field baru memakai `omitempty`.
 
-Migrasi: `internal/cli/push.go`, `fetch.go`, `delete.go`, `list.go` (ganti semua `a.log(...)` dengan pola di atas), lalu hapus `app.log` di `internal/cli/app.go`.
+`audit.Logger.Append` mengembalikan error; `record` mencetaknya sebagai `warning: write audit log ...` ke stderr dan tidak menggagalkan command.
 
 ## Context (diadopsi)
 
@@ -108,7 +110,7 @@ RunE: func(cmd *cobra.Command, _ []string) error {
 },
 ```
 
-Migrasi: `context.Background()` di `internal/cli/app.go`, `authorize.go`, `delete.go`, `fetch.go`, `list.go`, `push.go`. `srv.Shutdown(context.Background())` di `internal/gdrive/auth.go` boleh tetap, karena shutdown harus jalan meski ctx sudah batal.
+Pengecualian: shutdown server callback OAuth di `internal/gdrive/auth.go` memakai `context.Background()` dengan timeout, karena shutdown harus jalan meski ctx sudah batal.
 
 ## Error (tetap)
 
@@ -122,10 +124,11 @@ Contoh: `internal/gdrive/client.go`.
 ## Output (tetap)
 
 - Hasil ke stdout lewat `fmt.Printf`. Output list berupa TSV satu baris per item (`internal/cli/list.go`, `internal/cli/logs.go`). Di `logs`, field kosong ditulis `-`.
-- Status sukses satu baris huruf kecil: `uploaded: <nama> (id=<id>)`, `downloaded: <path>`, `deleted: <id>`.
+- Status sukses satu baris huruf kecil: `uploaded: <nama> (id=<id>)`, `downloaded: <path>`, `trashed: <id>` (atau `deleted: <id>` dengan `--permanent`), `shared: <link>`. Dry-run memakai `would <verb>: ...`.
+- `--json` mencetak JSON berindentasi (struct `fileJSON` di `internal/cli/app.go`) sebagai ganti status line atau TSV.
+- Pesan untuk manusia (URL OAuth, progress upload, warning) ke stderr. Progress hanya tampil kalau stderr adalah terminal.
+- Nilai TSV lewat `tsvField` supaya tab atau newline di nama file tidak merusak kolom.
 - Script membaca output ini, jadi kolom dan urutannya tidak diubah tanpa permintaan user. Kolom baru ditambah di akhir.
-
-Deviasi: `internal/gdrive/auth.go` mencetak URL OAuth dan pesan token ke stdout, sehingga ikut tertangkap saat script menangkap output (sudah diperingatkan di `README.md`).
 
 ## Test (diadopsi)
 
@@ -150,9 +153,9 @@ defer srv.Close()
 c, err := newWithHTTP(ctx, srv.Client(), srv.URL+"/")
 ```
 
-Prioritas pertama: `Upload` dengan `replace` (urutan upload lalu hapus), `ResolveFolderPath` dengan dan tanpa `create`, `List` dengan lebih dari satu halaman.
+Drive palsu ada di `internal/gdrive/fake_test.go`. Ia mencatat setiap operasi yang mengubah data (`ops`: `create:<nama>`, `trash:<id>`, ...), sehingga test bisa mengecek urutan, misalnya upload sebelum trash. Query hanya mendukung klausa yang dibangun gdrive; klausa baru harus ditambahkan ke `matches`. Opsi `maxPage`, `badMD5`, dan `failStatus`/`failCount` dipakai untuk menguji paginasi, checksum, dan retry.
 
-Migrasi: belum ada test. Tambahkan task `test` (`go test ./...`) di `Taskfile.yml` dan masukkan ke `task check`.
+`task test` menjalankan `go test ./...` dan termasuk di `task check` serta CI.
 
 ## Penamaan (tetap)
 

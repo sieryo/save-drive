@@ -43,16 +43,22 @@ tasks:
     cmds:
       - go vet ./...
 
+  test:
+    desc: Run unit tests (no credentials or network needed)
+    cmds:
+      - go test ./...
+
   tidy:
     desc: Tidy go.mod / go.sum
     cmds:
       - go mod tidy
 
   check:
-    desc: fmt + vet + release build
+    desc: fmt + vet + test + release build
     cmds:
       - task: fmt
       - task: vet
+      - task: test
       - task: release
 
   clean:
